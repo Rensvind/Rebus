@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net5.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Rebus.RabbitMq" Version="7.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Outbox.SqlServer\Outbox.SqlServer.csproj" />
+    <ProjectReference Include="..\Outbox\Outbox.csproj" />
+  </ItemGroup>
+
+</Project>
