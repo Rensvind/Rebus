@@ -1,10 +1,10 @@
-﻿using System.Data.Common;
+﻿using Microsoft.Data.SqlClient;
 
 namespace Rebus.Outbox.SqlServer
 {
     public class DbConnectionAndTransactionWrapper
     {
-        public DbConnection DbConnection { get; set; }
-        public DbTransaction DbTransaction { get; set; }
+        public SqlConnection DbConnection { get; set; }
+        public SqlTransaction DbTransaction { get; set; }
     }
 }

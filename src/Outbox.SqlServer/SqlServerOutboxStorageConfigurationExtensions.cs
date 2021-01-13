@@ -1,6 +1,7 @@
 ﻿using System;
 using Microsoft.Data.SqlClient;
 using Rebus.Config;
+using Rebus.Transport;
 
 namespace Rebus.Outbox.SqlServer
 {
@@ -32,7 +33,7 @@ namespace Rebus.Outbox.SqlServer
                 var subscriptionStorage = new SqlServerOutboxStorage(new SqlServerOutboxSettings
                 {
                     TableName = tableName
-                }, c.Get<DbConnectionAccessor>());
+                }, c.Get<DbConnectionAccessor>(), c.Get<ITransport>().Address);
 
                 if (automaticallyCreateTables)
                 {
@@ -59,16 +60,6 @@ namespace Rebus.Outbox.SqlServer
 
                 return subscriptionStorage;
             });
-
-            //configurer.
-
-            //configurer.Decorate<IPipeline>(c =>
-            //{
-            //    var pipeline = c.Get<IPipeline>();
-
-            //    return new PipelineStepInjector(pipeline).OnReceive(new SqlServerOutboxStep(connectionFactory),
-            //        PipelineRelativePosition.Before, typeof(OutboxStep));
-            //});
         }
 	}
 }

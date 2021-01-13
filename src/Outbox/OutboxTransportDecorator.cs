@@ -1,7 +1,11 @@
-﻿using System.Collections.Concurrent;
+﻿using System;
+using System.Collections.Concurrent;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Rebus.Extensions;
 using Rebus.Messages;
+using Rebus.Pipeline;
 using Rebus.Transport;
 
 namespace Rebus.Outbox
@@ -23,17 +27,37 @@ namespace Rebus.Outbox
 
         public Task Send(string destinationAddress, TransportMessage message, ITransactionContext context)
         {
+            var incomingStepContext = context.GetOrNull<IncomingStepContext>(StepContext.StepContextKey);
+
+            if (incomingStepContext == null) // If null we are sending outside of a handler
+            {
+                transport.Send(destinationAddress, message, context);
+                return Task.CompletedTask;
+            }
+
             var outgoingMessages = context.GetOrAdd(OutgoingMessagesItemsKey, () =>
             {
                 var messages = new ConcurrentQueue<TransportMessage>();
+
+                context.OnCommitted(tc =>
+                {
+                    return Task.WhenAll(messages.Where(x => x.Body.Length > 0).Select(transportMessage =>
+                    {
+                        var address = transportMessage.Headers.GetValue(OutboxHeaders.Recipient);
+                        transportMessage.Headers.Remove(OutboxHeaders.Recipient);
+                        return transport.Send(address, transportMessage, tc);
+                    }).ToArray());
+
+                });
+                
                 return messages;
             });
 
-            message.Headers.Add(OutboxHeaders.Recipient, destinationAddress);
+            if(!message.Headers.ContainsKey(OutboxHeaders.Recipient))
+                message.Headers.Add(OutboxHeaders.Recipient, destinationAddress);
             outgoingMessages.Enqueue(message);
 
-            // Note: What will happen to messages that are sent directly and not added to the in-memory list that is sent at ITransactionContext commit/complete ?
-            return transport.Send(destinationAddress, message, context);
+            return Task.CompletedTask;
         }
 
         public Task<TransportMessage> Receive(ITransactionContext context, CancellationToken cancellationToken)
@@ -41,6 +65,6 @@ namespace Rebus.Outbox
             return transport.Receive(context, cancellationToken);
         }
 
-        public string Address => transport.Address;
+		public string Address => transport.Address;
     }
 }

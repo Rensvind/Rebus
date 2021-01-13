@@ -1,7 +1,7 @@
 ﻿using System;
 using Rebus.Config;
 using Rebus.Pipeline;
-using Rebus.Pipeline.Receive;
+using Rebus.Retry.Simple;
 using Rebus.Transport;
 
 namespace Rebus.Outbox
@@ -16,11 +16,10 @@ namespace Rebus.Outbox
         /// </summary>
         /// <param name="configurer"></param>
         /// <param name="outboxStorageConfigurer"></param>
-        /// <param name="configureOptions"></param>
         /// <returns></returns>
         /// <exception cref="ArgumentNullException"></exception>
         public static RebusConfigurer Outbox(this RebusConfigurer configurer,
-            Action<StandardConfigurer<IOutboxStorage>> outboxStorageConfigurer, Action<OutboxOptions> configureOptions = null)
+            Action<StandardConfigurer<IOutboxStorage>> outboxStorageConfigurer)
         {
             configurer
                 .Transport(t =>
@@ -40,16 +39,11 @@ namespace Rebus.Outbox
                 {
                     opts.Decorate<IPipeline>(c =>
                     {
-                        var outboxOptions = new OutboxOptions();
-                        configureOptions?.Invoke(outboxOptions);
-
-                        var outboxStep = outboxOptions.OutboxType == OutboxType.Optimistic ?
-                            (IIncomingStep)new OptimisticOutboxStep(c.Get<IOutboxStorage>(), c.Get<ITransport>()) :
-                            new PessemisticOutboxStep(c.Get<IOutboxStorage>(), c.Get<ITransport>());
+                        var outboxStep = new OutboxStep(c.Get<IOutboxStorage>(), c.Get<ITransport>(), c.Get<IOutboxTransactionFactory>());
 
                         var pipeline = c.Get<IPipeline>();
                         return new PipelineStepInjector(pipeline).OnReceive(outboxStep,
-                            PipelineRelativePosition.Before, typeof(ActivateHandlersStep));
+                            PipelineRelativePosition.After, typeof(SimpleRetryStrategyStep));
                     });
                 });
             return configurer;

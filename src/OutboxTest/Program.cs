@@ -4,7 +4,6 @@ using Rebus.Activation;
 using Rebus.Config;
 using Rebus.Outbox;
 using Rebus.Outbox.SqlServer;
-using Rebus.Pipeline;
 
 namespace OutboxTest
 {
@@ -12,7 +11,7 @@ namespace OutboxTest
     {
         static async Task Main(string[] args)
         {
-            var connectionString = "connectionstring";
+            var connectionString = "";
             using (var activator = new BuiltinHandlerActivator())
             {
                 activator.Handle<bool>((bus, x) =>
@@ -32,22 +31,17 @@ namespace OutboxTest
                 var bus = Configure
                     .With(activator)
                     .Transport(t => t.UseRabbitMq("amqp://localhost", "test"))
-                    .Outbox(o => o.UseSqlServer(connectionString, "rebus.Outbox", true))
+                    .Outbox(o => o.UseSqlServer(connectionString, "Rebus.Outbox", true))
                     .Options(o =>
                     {
                         o.LogPipeline(true);
+                        
+                        o.SetNumberOfWorkers(1);
+                        o.SetMaxParallelism(1);
 
                         // Could we somehow do this configuration in SqlServerOutboxStorageConfigurationExtensions ?
                         o.Register(rx => new DbConnectionAccessor());
-                        o.Decorate<IPipeline>(p =>
-                        {
-                            var pipeline = p.Get<IPipeline>();
-
-                            return new PipelineStepInjector(pipeline).OnReceive(
-                                new SqlServerOutboxStep(connectionString, p.Get<DbConnectionAccessor>()),
-                                PipelineRelativePosition.Before, typeof(OptimisticOutboxStep));
-                        });
-
+                        o.Register<IOutboxTransactionFactory>(rx => new SqlServerOutboxTransactionFactory(connectionString, rx.Get<DbConnectionAccessor>()));
 
                     }).Start();
 

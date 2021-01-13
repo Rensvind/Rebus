@@ -2,76 +2,119 @@
 using System.Collections.Generic;
 using System.Data;
 using System.Threading.Tasks;
-using Microsoft.Data.SqlClient;
+using Rebus.Bus;
 using Rebus.Messages;
+using Rebus.Serialization;
 
 namespace Rebus.Outbox.SqlServer
 {
     public class SqlServerOutboxStorage : IOutboxStorage
     {
         private readonly DbConnectionAccessor connectionAccessor;
+        private readonly string address;
         private readonly TableName tableName;
+        private static readonly HeaderSerializer HeaderSerializer = new();
+        private readonly int addressLength;
 
-        public SqlServerOutboxStorage(SqlServerOutboxSettings sqlServerOutboxSettings, DbConnectionAccessor connectionAccessor)
+        public SqlServerOutboxStorage(SqlServerOutboxSettings sqlServerOutboxSettings,
+            DbConnectionAccessor connectionAccessor, string address)
         {
             this.connectionAccessor = connectionAccessor;
+            this.address = address;
+            this.addressLength = address.Length;
             this.tableName = TableName.Parse(sqlServerOutboxSettings.TableName);
         }
 
-        /// <inheritdoc cref="IOutboxStorage.GetOutgoingMessages"/>
-        public async Task<List<TransportMessage>> GetOutgoingMessages(Message message)
+        public async Task Store(TransportMessage message, IEnumerable<TransportMessage> outgoingMessages)
         {
             using (var command = connectionAccessor.Item.DbConnection.CreateCommand())
             {
                 command.Transaction = connectionAccessor.Item.DbTransaction;
-                command.CommandText = $"SELECT Data FROM {tableName} WHERE Id = @id";
-                var idParameter = command.CreateParameter();
-                idParameter.ParameterName = "Id";
-                idParameter.DbType = DbType.Guid;
-                idParameter.Size = -1;
-                idParameter.Value = Guid.Parse(message.Headers[Headers.MessageId]);
-                command.Parameters.Add(idParameter);
 
-                var result = await command.ExecuteScalarAsync() as byte[];
-                if (result == null)
-                    return null;
+                var messageId = message.GetMessageId();
 
-                return System.Text.Json.JsonSerializer.Deserialize<List<TransportMessage>>(result);
+                command.Parameters.Add("messageId", SqlDbType.NChar, messageId.Length).Value = messageId;
+                command.Parameters.Add("messageInputQueue", SqlDbType.NChar, addressLength).Value = address;
+                
+                command.CommandText = string.Empty;
+                var i = 0;
+                
+                foreach (var outMessage in outgoingMessages)
+                {
+                    command.CommandText += $@"INSERT INTO {tableName} ([MessageId], [MessageInputQueue], [Headers], [Body]) VALUES (@messageId, @messageInputQueue, @headers{i}, @body{i});";
+
+                    var serializedHeaders = HeaderSerializer.Serialize(outMessage.Headers);
+
+                    command.Parameters.Add($"headers{i}", SqlDbType.VarBinary, MathUtil.GetNextPowerOfTwo(serializedHeaders.Length)).Value = serializedHeaders;
+                    command.Parameters.Add($"body{i}", SqlDbType.VarBinary, MathUtil.GetNextPowerOfTwo(outMessage.Body.Length)).Value = outMessage.Body;
+                    
+                    ++i;
+                }
+
+                await command.ExecuteNonQueryAsync();
             }
         }
 
-        /// <inheritdoc cref="IOutboxStorage.TryStore"/>
-        public async Task<bool> TryStore(Message message, List<TransportMessage> outgoingMessages)
+        public async Task DeleteOutgoingMessages(TransportMessage message)
         {
             using (var command = connectionAccessor.Item.DbConnection.CreateCommand())
             {
                 command.Transaction = connectionAccessor.Item.DbTransaction;
-                command.CommandText =
-                    $@"INSERT INTO {tableName} ([Id], [Data]) VALUES (@Id, @Data)";
+                command.CommandText = $"DELETE FROM {tableName} WHERE MessageID = @messageId AND MessageInputQueue = @messageInputQueue AND LEN(Body) <> 0";
 
-                var idParam = command.CreateParameter();
-                idParam.ParameterName = "Id";
-                idParam.DbType = DbType.Guid;
-                idParam.Size = -1;
-                idParam.Value = Guid.Parse(message.Headers[Headers.MessageId]);
-                command.Parameters.Add(idParam);
+                var messageId = message.GetMessageId();
 
-                var data = command.CreateParameter();
-                data.ParameterName = "data";
-                data.DbType = DbType.Binary;
-                data.Size = -1;
-                data.Value = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(outgoingMessages);
-                command.Parameters.Add(data);
+                command.Parameters.Add("messageId", SqlDbType.NChar, messageId.Length).Value = messageId;
+                command.Parameters.Add("messageInputQueue", SqlDbType.NChar, addressLength).Value = address;
 
-                try
+                await command.ExecuteNonQueryAsync();
+            }
+        }
+
+        public async Task DeleteIdempotencyCheckMessage(TransportMessage message)
+        {
+            using (var command = connectionAccessor.Item.DbConnection.CreateCommand())
+            {
+                command.Transaction = connectionAccessor.Item.DbTransaction;
+                command.CommandText = $"DELETE FROM {tableName} WHERE MessageID = @messageId AND MessageInputQueue = @messageInputQueue AND LEN(Body) = 0";
+
+                var messageId = message.GetMessageId();
+
+                command.Parameters.Add("messageId", SqlDbType.NChar, messageId.Length).Value = messageId;
+                command.Parameters.Add("messageInputQueue", SqlDbType.NChar, addressLength).Value = address;
+
+                await command.ExecuteNonQueryAsync();
+            }
+        }
+
+        /// <inheritdoc cref="IOutboxStorage.GetOutgoingMessages"/>
+        public async Task<List<TransportMessage>> GetOutgoingMessages(TransportMessage message)
+        {
+            using (var command = connectionAccessor.Item.DbConnection.CreateCommand())
+            {
+                command.Transaction = connectionAccessor.Item.DbTransaction;
+                command.CommandText = @$"SELECT [Headers], [Body] FROM {tableName} WHERE [MessageId] = @messageId AND [MessageInputQueue] = @messageInputQueue";
+
+                var messageId = message.GetMessageId();
+
+                command.Parameters.Add("messageId", SqlDbType.NChar, messageId.Length).Value = messageId;
+                command.Parameters.Add("messageInputQueue", SqlDbType.NChar, addressLength).Value = address;
+
+                var transportMessages = new List<TransportMessage>();
+
+                using (var reader = await command.ExecuteReaderAsync())
                 {
-                    await command.ExecuteNonQueryAsync();
-                    return true;
+                    while (await reader.ReadAsync())
+                    {
+                        var headers = reader["headers"];
+                        var headersDictionary = HeaderSerializer.Deserialize((byte[])headers);
+                        var body = (byte[])reader["body"];
+
+                        transportMessages.Add(new TransportMessage(headersDictionary, body));
+                    }
                 }
-                catch (SqlException e) when (e.Number == 2627)
-                {
-                    return false;
-                }
+
+                return transportMessages;
             }
         }
 
@@ -85,15 +128,36 @@ namespace Rebus.Outbox.SqlServer
                         ----
                         IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = '{tableName.Schema}' AND TABLE_NAME = '{
                                                 tableName.Name
-                                            }')
-                            CREATE TABLE {tableName} (
-                                [id] [uniqueidentifier] NOT NULL,
-	                            [data] [varbinary](MAX) NOT NULL,
-                                CONSTRAINT [PK_{tableName.Schema}_{tableName.Name}] PRIMARY KEY NONCLUSTERED 
-                                (
-	                                [id] ASC
-                                )
+                                            }') 
+                            CREATE TABLE {tableName}(
+	                            [Id] [bigint] IDENTITY(1,1) NOT NULL,
+	                            [MessageId] [nvarchar](255) NOT NULL,
+	                            [MessageInputQueue] [nvarchar](255) NOT NULL,
+	                            [Headers] [varbinary](max) NOT NULL,
+	                            [Body] [varbinary](max) NOT NULL,
+	                            [Handled] [datetime] NOT NULL,
+                             CONSTRAINT [PK_{tableName.Schema}_{tableName.Name}] PRIMARY KEY CLUSTERED 
+                            (
+	                            [Id] ASC
+                            )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
+                            ) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
+                       -----
+                       IF NOT EXISTS (SELECT * FROM dbo.sysobjects WHERE [name] = (N'DF_{tableName.Schema}_{tableName.Name}_Created') AND type = 'D')
+                            ALTER TABLE {tableName} ADD  CONSTRAINT [DF_{tableName.Schema}_{tableName.Name}_Created]  DEFAULT (getutcdate()) FOR [Handled]
+                       -----
+                       IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_{tableName.Schema}_{tableName.Name}_MessageId_MessageInputQueue')
+                            CREATE NONCLUSTERED INDEX [IX_{tableName.Schema}_{tableName.Name}_MessageId_MessageInputQueue] ON {tableName}
+                            (
+	                            [MessageId] ASC,
+	                            [MessageInputQueue] ASC
                             )
+                            INCLUDE([Headers],[Body]) WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, SORT_IN_TEMPDB = OFF, DROP_EXISTING = OFF, ONLINE = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
+                       -----
+                       IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_{tableName.Schema}_{tableName.Name}_Handled')
+                            CREATE NONCLUSTERED INDEX [IX_{tableName.Schema}_{tableName.Name}_Handled] ON {tableName}
+                            (
+	                            [Handled] ASC
+                            )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, SORT_IN_TEMPDB = OFF, DROP_EXISTING = OFF, ONLINE = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
                         ";
                 command.Transaction = connectionAccessor.Item.DbTransaction;
                 await command.ExecuteNonQueryAsync();
