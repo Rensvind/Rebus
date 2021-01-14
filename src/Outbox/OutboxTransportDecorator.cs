@@ -12,7 +12,6 @@ namespace Rebus.Outbox
 {
     internal class OutboxTransportDecorator : ITransport
     {
-        internal const string OutgoingMessagesItemsKey = "outbox-outgoing-messages";
         private readonly ITransport transport;
 
         public OutboxTransportDecorator(ITransport transport)
@@ -35,7 +34,7 @@ namespace Rebus.Outbox
                 return Task.CompletedTask;
             }
 
-            var outgoingMessages = context.GetOrAdd(OutgoingMessagesItemsKey, () =>
+            var outgoingMessages = context.GetOrAdd(OutboxConstants.OutgoingMessagesItemsKey, () =>
             {
                 var messages = new ConcurrentQueue<TransportMessage>();
 

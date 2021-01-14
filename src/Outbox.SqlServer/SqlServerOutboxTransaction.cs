@@ -23,13 +23,11 @@ namespace Rebus.Outbox.SqlServer
             
         }
 
-        public async ValueTask DisposeAsync()
+        public void Dispose()
         {
             factory.Dispose();
-            if (transaction != null)
-                await transaction.DisposeAsync();
-            if (connection != null)
-                await connection.CloseAsync();
+            transaction?.Dispose();
+            connection?.Close();
         }
 
         public Task CompleteAsync()

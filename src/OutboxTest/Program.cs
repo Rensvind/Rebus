@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Linq;
 using System.Threading.Tasks;
 using Rebus.Activation;
+using Rebus.Backoff;
 using Rebus.Config;
 using Rebus.Outbox;
 using Rebus.Outbox.SqlServer;
@@ -14,20 +16,15 @@ namespace OutboxTest
             var connectionString = "";
             using (var activator = new BuiltinHandlerActivator())
             {
-                activator.Handle<bool>((bus, x) =>
+                activator.Handle<bool>((b, x) =>
                 {
-                    Console.WriteLine(x.ToString());
-                    bus.SendLocal($"Sending {x} from bool handler");
+                    b.SendLocal($"Sending {x} from bool handler");
                     return Task.CompletedTask;
                 });
 
-                activator.Handle<string>(x =>
-                {
-                    Console.WriteLine(x);
-                    return Task.CompletedTask;
-                });
+                activator.Handle<string>(x => Task.CompletedTask);
 
-                
+
                 var bus = Configure
                     .With(activator)
                     .Transport(t => t.UseRabbitMq("amqp://localhost", "test"))
@@ -36,9 +33,6 @@ namespace OutboxTest
                     {
                         o.LogPipeline(true);
                         
-                        o.SetNumberOfWorkers(1);
-                        o.SetMaxParallelism(1);
-
                         // Could we somehow do this configuration in SqlServerOutboxStorageConfigurationExtensions ?
                         o.Register(rx => new DbConnectionAccessor());
                         o.Register<IOutboxTransactionFactory>(rx => new SqlServerOutboxTransactionFactory(connectionString, rx.Get<DbConnectionAccessor>()));
@@ -51,7 +45,6 @@ namespace OutboxTest
                 {
                     await bus.SendLocal(true);
                 }
-
             }
         }
     }

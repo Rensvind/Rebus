@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Data;
 using System.Threading.Tasks;
 using Rebus.Bus;
@@ -60,7 +59,7 @@ namespace Rebus.Outbox.SqlServer
             using (var command = connectionAccessor.Item.DbConnection.CreateCommand())
             {
                 command.Transaction = connectionAccessor.Item.DbTransaction;
-                command.CommandText = $"DELETE FROM {tableName} WHERE MessageID = @messageId AND MessageInputQueue = @messageInputQueue AND LEN(Body) <> 0";
+                command.CommandText = $"DELETE FROM {tableName} WHERE MessageID = @messageId AND MessageInputQueue = @messageInputQueue AND DATALENGTH(Body) <> 0";
 
                 var messageId = message.GetMessageId();
 
@@ -76,7 +75,7 @@ namespace Rebus.Outbox.SqlServer
             using (var command = connectionAccessor.Item.DbConnection.CreateCommand())
             {
                 command.Transaction = connectionAccessor.Item.DbTransaction;
-                command.CommandText = $"DELETE FROM {tableName} WHERE MessageID = @messageId AND MessageInputQueue = @messageInputQueue AND LEN(Body) = 0";
+                command.CommandText = $"DELETE FROM {tableName} WHERE MessageID = @messageId AND MessageInputQueue = @messageInputQueue AND DATALENGTH(Body) = 0";
 
                 var messageId = message.GetMessageId();
 

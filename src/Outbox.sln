@@ -3,11 +3,11 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.30717.126
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OutboxTest", "OutboxTest\OutboxTest.csproj", "{FAE27461-8079-4912-871C-EFE5411E6A39}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "OutboxTest", "OutboxTest\OutboxTest.csproj", "{FAE27461-8079-4912-871C-EFE5411E6A39}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Outbox", "Outbox\Outbox.csproj", "{9DCA3F50-0FCF-48F9-B236-6A9BA4B24BCA}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Outbox", "Outbox\Outbox.csproj", "{9DCA3F50-0FCF-48F9-B236-6A9BA4B24BCA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Outbox.SqlServer", "Outbox.SqlServer\Outbox.SqlServer.csproj", "{458FC724-C421-485D-9353-5E513EF46DB1}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Outbox.SqlServer", "Outbox.SqlServer\Outbox.SqlServer.csproj", "{458FC724-C421-485D-9353-5E513EF46DB1}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
