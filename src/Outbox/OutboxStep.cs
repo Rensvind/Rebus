@@ -27,7 +27,7 @@ namespace Rebus.Outbox
         {
             var message = context.Load<TransportMessage>();
             var txContext = context.Load<ITransactionContext>();
-
+            
             using (var tx = outboxTransactionFactory.Start())
             {
                 var outgoingMessages = await outboxStorage.GetOutgoingMessages(message);

@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -27,8 +26,9 @@ namespace Rebus.Outbox
         public Task Send(string destinationAddress, TransportMessage message, ITransactionContext context)
         {
             var incomingStepContext = context.GetOrNull<IncomingStepContext>(StepContext.StepContextKey);
+            var httpRequest = context.GetOrAdd("httpRequest", () => false);
 
-            if (incomingStepContext == null) // If null we are sending outside of a handler
+            if (incomingStepContext == null && !httpRequest) // If null we are sending outside of a handler
             {
                 transport.Send(destinationAddress, message, context);
                 return Task.CompletedTask;

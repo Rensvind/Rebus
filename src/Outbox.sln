@@ -9,6 +9,10 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Outbox", "Outbox\Outbox.csp
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Outbox.SqlServer", "Outbox.SqlServer\Outbox.SqlServer.csproj", "{458FC724-C421-485D-9353-5E513EF46DB1}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HttpOutbox", "HttpOutbox\HttpOutbox.csproj", "{41CA2C67-58FB-445C-BAB0-F4B919878983}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Outbox.Http", "Outbox.Http\Outbox.Http.csproj", "{72E9541D-45FB-4D99-984E-484BAF29E5D7}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,6 +31,14 @@ Global
 		{458FC724-C421-485D-9353-5E513EF46DB1}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{458FC724-C421-485D-9353-5E513EF46DB1}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{458FC724-C421-485D-9353-5E513EF46DB1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{41CA2C67-58FB-445C-BAB0-F4B919878983}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{41CA2C67-58FB-445C-BAB0-F4B919878983}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{41CA2C67-58FB-445C-BAB0-F4B919878983}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{41CA2C67-58FB-445C-BAB0-F4B919878983}.Release|Any CPU.Build.0 = Release|Any CPU
+		{72E9541D-45FB-4D99-984E-484BAF29E5D7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{72E9541D-45FB-4D99-984E-484BAF29E5D7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{72E9541D-45FB-4D99-984E-484BAF29E5D7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{72E9541D-45FB-4D99-984E-484BAF29E5D7}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
