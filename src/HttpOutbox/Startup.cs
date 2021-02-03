@@ -3,17 +3,17 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using System;
-using System.Threading;
 using HttpOutbox.Handlers;
-using Outbox.Http;
 using Rebus.Config;
-using Rebus.Logging;
-using Rebus.Outbox;
-using Rebus.Outbox.SqlServer;
+using Rebus.Outbox.Common.Config;
+using Rebus.Outbox.Handler.Config;
+using Rebus.Outbox.Handler.SqlServer.Config;
+using Rebus.Outbox.Http;
+using Rebus.Outbox.Http.Config;
+using Rebus.Outbox.Http.SqlServer.Config;
+using Rebus.Outbox.SqlServer.Common.Config;
 using Rebus.Retry.Simple;
 using Rebus.ServiceProvider;
-using Rebus.Transport;
 
 namespace HttpOutbox
 {
@@ -33,50 +33,28 @@ namespace HttpOutbox
 
             services.AutoRegisterHandlersFromAssemblyOf<TestMessageHandler>();
 
-            var dbConnectionAccessor = new DbConnectionAccessor();
-            
-            services.AddSingleton(dbConnectionAccessor);
+            var connectionString = "connectionString";
 
-            services.AddSingleton<IOutboxStorage>(new SqlServerOutboxStorage(new SqlServerOutboxSettings
-            {
-                TableName = "Rebus.Outbox"
-            }, dbConnectionAccessor, "testHttp"));
-
-            var connectionString = "<connectionString>";
-
-            services.AddSingleton<IOutboxTransactionFactory>(new SqlServerOutboxTransactionFactory(connectionString, dbConnectionAccessor));
+            services.AddHttpOutbox("apXlTbqr1", "Rebus.HttpOutbox", connectionString);
 
             // Configure and register Rebus
             services.AddRebus((configure, sp) => configure
                 .Logging(l => l.ColoredConsole())
-                .Transport(t => t.UseRabbitMq("amqp://localhost", "testHttp")
+                .Transport(t =>
+                    t.UseRabbitMq("amqp://localhost", "testHttp")
                     .InputQueueOptions(queueConfig => queueConfig.AddArgument("x-queue-type", "quorum"))
-                    .DefaultQueueOptions(queueConfig => queueConfig.AddArgument("x-queue-type", "quorum"))
+                    .DefaultQueueOptions(queueConfig => queueConfig.AddArgument("x-queue-type", "quorum")
+                    )
                 )
-                .Outbox(o => o.UseSqlServer(connectionString, "Rebus.Outbox", true))
+                .Outbox(o =>
+                    o.UseSqlServer(connectionString)
+                        .ForHandlers(t => t.Config("Rebus.Outbox", true))
+                        .ForHttp(sp.GetService<IOutboxHttpStorage>())
+                )
                 .Options(opts =>
                 {
-                    opts.Decorate(c =>
-                    {
-                        var transport = c.Get<ITransport>();
-
-                        var outboxMessagesProcessor = new OutboxMessagesProcessor(
-                            10,
-                            transport,
-                            c.Get<IOutboxStorage>(),
-                            TimeSpan.FromSeconds(5),
-                            c.Get<IRebusLoggerFactory>(),
-                            c.Get<IOutboxTransactionFactory>(),
-                            c.Get<CancellationToken>());
-
-                        outboxMessagesProcessor.Run();
-
-                        return transport;
-                    });
-                    
+                    opts.LogPipeline(true);
                     opts.SimpleRetryStrategy(errorQueueAddress: "errorquorom");
-                    opts.Register(_ => dbConnectionAccessor);
-                    opts.Register(rc => sp.GetService<IOutboxTransactionFactory>());
                 }));
         }
 
@@ -87,14 +65,14 @@ namespace HttpOutbox
             {
                 app.UseDeveloperExceptionPage();
             }
-            
+
             app.ApplicationServices.UseRebus();
-            
+
             app.UseRouting();
 
             app.UseAuthorization();
 
-            app.UseMiddleware<OutboxMiddleware>();
+            app.UseOutbox();
             
             app.UseEndpoints(endpoints =>
             {

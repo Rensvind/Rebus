@@ -1,0 +1,14 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net5.0</TargetFramework>
+    <AssemblyName>Rebus.Outbox.Handler.SqlServer</AssemblyName>
+    <RootNamespace>Rebus.Outbox.Handler.SqlServer</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Outbox.Handler\Outbox.Handler.csproj" />
+    <ProjectReference Include="..\Outbox.SqlServer.Common\Outbox.SqlServer.Common.csproj" />
+  </ItemGroup>
+
+</Project>

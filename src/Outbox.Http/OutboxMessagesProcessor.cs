@@ -2,26 +2,29 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Rebus.Logging;
-using Rebus.Outbox;
+using Rebus.Outbox.Common;
 using Rebus.Transport;
 
-namespace Outbox.Http
+namespace Rebus.Outbox.Http
 {
 	public class OutboxMessagesProcessor
 	{
         private readonly int topMessagesToRetrieve;
         private readonly ITransport transport;
-		private readonly IOutboxStorage outboxStorage;
+		private readonly IOutboxHttpStorage outboxStorage;
         private readonly TimeSpan pollingInterval;
+        private readonly TimeSpan sendMessagesOlderThan;
         private readonly IOutboxTransactionFactory outboxTransactionFactory;
         private readonly CancellationToken busDisposalCancellationToken;
 		private readonly ILog log;
 
 		public OutboxMessagesProcessor(
             int topMessagesToRetrieve,
+            TimeSpan pollingInterval,
+            TimeSpan sendMessagesOlderThan,
 			ITransport transport,
-			IOutboxStorage outboxStorage,
-			TimeSpan pollingInterval,
+			IOutboxHttpStorage outboxStorage,
+			
 			IRebusLoggerFactory rebusLoggerFactory,
             IOutboxTransactionFactory outboxTransactionFactory,
 			CancellationToken busDisposalCancellationToken)
@@ -30,6 +33,7 @@ namespace Outbox.Http
             this.transport = transport;
 			this.outboxStorage = outboxStorage;
             this.pollingInterval = pollingInterval;
+            this.sendMessagesOlderThan = sendMessagesOlderThan;
             this.outboxTransactionFactory = outboxTransactionFactory;
             this.busDisposalCancellationToken = busDisposalCancellationToken;
 			log = rebusLoggerFactory.GetLogger<OutboxMessagesProcessor>();
@@ -43,26 +47,28 @@ namespace Outbox.Http
 			{
 				try
 				{
-					using (var tx = outboxTransactionFactory.Start())
-					{
-						var messages = await outboxStorage.GetUnsentOutgoingMessages(topMessagesToRetrieve);
-						if (messages.Count > 0)
-						{
-							using (var rebusTransactionScope = new RebusTransactionScope())
-							{
-								foreach (var message in messages)
-								{
-									var destinationAddress = message.Headers[OutboxHeaders.Recipient];
-									message.Headers.Remove(OutboxHeaders.Recipient);
-									await transport.Send(destinationAddress, message,
-										rebusTransactionScope.TransactionContext);
-								}
-								await rebusTransactionScope.CompleteAsync();
-							}
-						}
+                    using (var scope = new RebusTransactionScope())
+                    {
+                        using (var tx = outboxTransactionFactory.Start())
+                        {
+                            var messages =
+                                await outboxStorage.GetUnsentOutgoingMessages(topMessagesToRetrieve,
+                                    sendMessagesOlderThan);
+                            if (messages.Count > 0)
+                            {
+                                foreach (var message in messages)
+                                {
+                                    var destinationAddress = message.Headers[OutboxHeaders.Recipient];
+                                    message.Headers.Remove(OutboxHeaders.Recipient);
+                                    await transport.Send(destinationAddress, message, scope.TransactionContext);
+                                }
+                            }
 
-						await tx.CompleteAsync();
-					}
+                            await tx.CompleteAsync();
+                        }
+
+                        await scope.CompleteAsync();
+                    }
 
                     await Task.Delay(pollingInterval, busDisposalCancellationToken);
 				}
@@ -81,10 +87,4 @@ namespace Outbox.Http
 
 		public Task Run() => Task.Run(ProcessOutboxMessages);
 	}
-
-    // NOTE: Duplicate for now...
-	internal class OutboxHeaders
-    {
-        internal const string Recipient = "Recipient";
-    }
 }

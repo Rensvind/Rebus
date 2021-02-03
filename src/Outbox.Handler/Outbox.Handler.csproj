@@ -1,19 +1,18 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net5.0</TargetFramework>
-    <AssemblyName>Rebus.Outbox.Http</AssemblyName>
-    <RootNamespace>Rebus.Outbox.Http</RootNamespace>
+    <AssemblyName>Rebus.Outbox.Handler</AssemblyName>
+    <RootNamespace>Rebus.Outbox.Handler</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.2.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="5.0.0" />
+    <PackageReference Include="Rebus" Version="6.4.1" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Outbox.Common\Outbox.Common.csproj" />
   </ItemGroup>
-
 
 </Project>

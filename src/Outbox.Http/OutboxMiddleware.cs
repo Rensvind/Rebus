@@ -3,10 +3,10 @@ using System.Collections.Concurrent;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Rebus.Messages;
-using Rebus.Outbox;
+using Rebus.Outbox.Common;
 using Rebus.Transport;
 
-namespace Outbox.Http
+namespace Rebus.Outbox.Http
 {
     public class OutboxMiddleware
     {
@@ -17,20 +17,19 @@ namespace Outbox.Http
             this.next = next ?? throw new ArgumentNullException(nameof(next));
         }
 
-        public async Task Invoke(HttpContext context, IOutboxStorage outboxStorage, IOutboxTransactionFactory outboxTransactionFactory)
+        public async Task Invoke(HttpContext context, IOutboxHttpStorage outboxStorage, IOutboxTransactionFactory outboxTransactionFactory)
         {
             ConcurrentQueue<TransportMessage> outgoingMessages;
 
             using (var rebusTx = new RebusTransactionScope())
             {
-                rebusTx.TransactionContext.Items["httpRequest"] = true;
-                
+                rebusTx.UseOutbox();
+
                 using (var tx = outboxTransactionFactory.Start())
                 {
                     await next(context);
 
-                    outgoingMessages = rebusTx.TransactionContext
-                        .GetOrNull<ConcurrentQueue<TransportMessage>>("outbox-outgoing-messages");
+                    outgoingMessages = rebusTx.TransactionContext.GetOrNull<ConcurrentQueue<TransportMessage>>(OutboxConstants.OutgoingMessagesItemsKey);
 
                     if (outgoingMessages != null)
                         await outboxStorage.Store(context.TraceIdentifier, outgoingMessages);
@@ -39,18 +38,31 @@ namespace Outbox.Http
                 }
 
                 await rebusTx.TransactionContext.Commit();
-                
+
                 await rebusTx.CompleteAsync();
             }
 
             if (outgoingMessages == null)
                 return;
 
-            using (var tx = outboxTransactionFactory.Start())
+            using (var scope = new RebusTransactionScope())
             {
-                await outboxStorage.DeleteOutgoingMessages(context.TraceIdentifier);
-                await tx.CompleteAsync();
+                using (var tx = outboxTransactionFactory.Start())
+                {
+                    await outboxStorage.DeleteOutgoingMessages(context.TraceIdentifier);
+                    await tx.CompleteAsync();
+                }
+
+                await scope.CompleteAsync();
             }
+        }
+    }
+
+    public static class Extensions
+    {
+        public static void UseOutbox(this RebusTransactionScope scope)
+        {
+            scope.TransactionContext.Items[OutboxConstants.OutboxShouldHandle] = true;
         }
     }
 }

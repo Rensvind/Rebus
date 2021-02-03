@@ -1,8 +1,8 @@
 ﻿using System;
 
-namespace Rebus.Outbox.SqlServer
+namespace Rebus.Outbox.SqlServer.Common
 {
-    static class MathUtil
+    public static class MathUtil
     {
         public static int GetNextPowerOfTwo(int input)
         {

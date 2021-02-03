@@ -1,13 +1,13 @@
 ﻿using System;
 using System.Text.RegularExpressions;
 
-namespace Rebus.Outbox.SqlServer
+namespace Rebus.Outbox.SqlServer.Common
 {
     /// <summary>
     /// Represents a (possibly schema-qualified) table name in SQL Server
     /// An implementation copied from https://github.com/rebus-org/Rebus.SqlServer
     /// </summary>
-    internal class TableName : IEquatable<TableName>
+    public class TableName : IEquatable<TableName>
     {
         /// <summary>
         /// Gets the schema name of the table

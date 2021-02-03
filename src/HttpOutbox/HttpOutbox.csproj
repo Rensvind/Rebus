@@ -1,20 +1,20 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net5.0</TargetFramework>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Data.SqlClient" Version="2.1.1" />
+    <PackageReference Include="Idha.Rebus.SqlServer" Version="1.0.1" />
     <PackageReference Include="Rebus" Version="6.4.1" />
     <PackageReference Include="Rebus.RabbitMq" Version="7.3.0" />
     <PackageReference Include="Rebus.ServiceProvider" Version="6.2.0" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Outbox.Http.SqlServer\Outbox.Http.SqlServer.csproj" />
     <ProjectReference Include="..\Outbox.Http\Outbox.Http.csproj" />
-    <ProjectReference Include="..\Outbox.SqlServer\Outbox.SqlServer.csproj" />
-    <ProjectReference Include="..\Outbox\Outbox.csproj" />
+    <ProjectReference Include="..\Outbox.SqlServer\Outbox.Handler.SqlServer.csproj" />
   </ItemGroup>
 
 </Project>

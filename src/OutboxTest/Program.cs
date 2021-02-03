@@ -3,8 +3,10 @@ using System.Threading.Tasks;
 using Rebus.Activation;
 using Rebus.Backoff;
 using Rebus.Config;
-using Rebus.Outbox;
-using Rebus.Outbox.SqlServer;
+using Rebus.Outbox.Common.Config;
+using Rebus.Outbox.Handler.Config;
+using Rebus.Outbox.Handler.SqlServer.Config;
+using Rebus.Outbox.SqlServer.Common.Config;
 using Rebus.Retry.Simple;
 
 namespace OutboxTest
@@ -13,7 +15,7 @@ namespace OutboxTest
     {
         static async Task Main(string[] args)
         {
-            var connectionString = "<connectionString>";
+            var connectionString = "Server=.\\SQL2017;Database=rebus2;User Id=sa;Password=password; Max Pool Size=100;";
 
             using (var activator = new BuiltinHandlerActivator())
             {
@@ -32,21 +34,14 @@ namespace OutboxTest
                         .InputQueueOptions(queueConfig => queueConfig.AddArgument("x-queue-type", "quorum"))
                         .DefaultQueueOptions(queueConfig => queueConfig.AddArgument("x-queue-type", "quorum"))
                     )
-                    .Outbox(o => o.UseSqlServer(connectionString, "Rebus.Outbox", true))
+                    .Outbox(o => 
+                        o.UseSqlServer(connectionString)
+                            .ForHandlers(t => t.Config("Rebus.Outbox", true))
+                    )
                     .Options(o =>
                     {
                         o.SimpleRetryStrategy(errorQueueAddress:"errorquorom");
-                        
                         o.LogPipeline(true);
-                        
-                        o.SetMaxParallelism(20);
-                        o.SetNumberOfWorkers(2);
-                        o.SetBackoffTimes(TimeSpan.FromMilliseconds(100));
-                        
-                        // Could we somehow do this configuration in SqlServerOutboxStorageConfigurationExtensions ?
-                        o.Register(rx => new DbConnectionAccessor());
-                        o.Register<IOutboxTransactionFactory>(rx => new SqlServerOutboxTransactionFactory(connectionString, rx.Get<DbConnectionAccessor>()));
-
                     }).Start();
 
 
@@ -54,10 +49,9 @@ namespace OutboxTest
                 while (Console.ReadLine() != "quit")
                 {
                     await bus.SendLocal(true);
+                    //await Task.WhenAll(Enumerable.Range(0, 100).Select(x => bus.SendLocal(true)));
                 }
             }
         }
     }
-    
-    
 }

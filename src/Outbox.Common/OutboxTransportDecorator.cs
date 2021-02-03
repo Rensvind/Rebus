@@ -4,16 +4,15 @@ using System.Threading;
 using System.Threading.Tasks;
 using Rebus.Extensions;
 using Rebus.Messages;
-using Rebus.Pipeline;
 using Rebus.Transport;
 
-namespace Rebus.Outbox
+namespace Rebus.Outbox.Common
 {
-    internal class OutboxTransportDecorator : ITransport
+    public class OutboxTransportDecorator : ITransport
     {
         private readonly ITransport transport;
 
-        public OutboxTransportDecorator(ITransport transport)
+        protected internal OutboxTransportDecorator(ITransport transport)
         {
             this.transport = transport;
         }
@@ -25,10 +24,7 @@ namespace Rebus.Outbox
 
         public Task Send(string destinationAddress, TransportMessage message, ITransactionContext context)
         {
-            var incomingStepContext = context.GetOrNull<IncomingStepContext>(StepContext.StepContextKey);
-            var httpRequest = context.GetOrAdd("httpRequest", () => false);
-
-            if (incomingStepContext == null && !httpRequest) // If null we are sending outside of a handler
+            if (!context.GetOrAdd(OutboxConstants.OutboxShouldHandle, () => false)) 
             {
                 transport.Send(destinationAddress, message, context);
                 return Task.CompletedTask;

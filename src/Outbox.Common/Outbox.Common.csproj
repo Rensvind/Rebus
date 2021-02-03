@@ -2,8 +2,8 @@
 
   <PropertyGroup>
     <TargetFramework>net5.0</TargetFramework>
-    <AssemblyName>Rebus.Outbox</AssemblyName>
-    <RootNamespace>Rebus.Outbox</RootNamespace>
+    <AssemblyName>Rebus.Outbox.Common</AssemblyName>
+    <RootNamespace>Rebus.Outbox.Common</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>

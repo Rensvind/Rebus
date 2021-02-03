@@ -1,35 +1,33 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using System;
+using System.Diagnostics;
+using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using HttpOutbox.Handlers;
 using Rebus.Bus;
-using Rebus.Outbox.SqlServer;
 using Rebus.Transport;
 
 namespace HttpOutbox.Controllers
 {
     [ApiController]
     [Route("[controller]")]
-    public class StringController : ControllerBase
+    public class TestController : ControllerBase
     {
         private readonly IBus bus;
-        private readonly DbConnectionAccessor accessor;
 
-        public StringController(IBus bus, DbConnectionAccessor accessor)
+        public TestController(IBus bus)
         {
             this.bus = bus;
-            this.accessor = accessor;
         }
 
         [HttpGet]
-        public async Task<string> Get()
+        public async Task<string> Get(int burst = 10)
         {
-            var dbConnectionAndTransactionWrapper = accessor.Item;
-
-            await bus.SendLocal(new TestMessage
+            await Task.WhenAll(Enumerable.Range(0, burst).Select(x => bus.SendLocal(new TestMessage
             {
                 TheMessage = $"I was sent {DateTime.UtcNow}"
-            });
+            })));
 
             return "Message sent";
         }

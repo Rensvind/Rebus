@@ -1,35 +1,34 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Data;
 using System.Threading.Tasks;
 using Rebus.Bus;
 using Rebus.Messages;
+using Rebus.Outbox.SqlServer.Common;
 using Rebus.Serialization;
 
-namespace Rebus.Outbox.SqlServer
+namespace Rebus.Outbox.Handler.SqlServer
 {
     public class SqlServerOutboxStorage : IOutboxStorage
     {
-        private readonly DbConnectionAccessor connectionAccessor;
         private readonly string address;
         private readonly TableName tableName;
         private static readonly HeaderSerializer HeaderSerializer = new();
         private readonly int addressLength;
 
-        public SqlServerOutboxStorage(SqlServerOutboxSettings sqlServerOutboxSettings,
-            DbConnectionAccessor connectionAccessor, string address)
+        public SqlServerOutboxStorage(string tableName, string address)
         {
-            this.connectionAccessor = connectionAccessor;
             this.address = address;
             this.addressLength = address.Length;
-            this.tableName = TableName.Parse(sqlServerOutboxSettings.TableName);
+            this.tableName = TableName.Parse(tableName);
         }
 
         public async Task Store(TransportMessage message, IEnumerable<TransportMessage> outgoingMessages)
         {
-            using (var command = connectionAccessor.Item.DbConnection.CreateCommand())
+            var sqlServerOutboxTransaction = OutboxTransaction.Get();
+
+            using (var command = sqlServerOutboxTransaction.Connection.CreateCommand())
             {
-                command.Transaction = connectionAccessor.Item.DbTransaction;
+                command.Transaction = sqlServerOutboxTransaction.Transaction;
 
                 var messageId = message.GetMessageId();
                 command.Parameters.Add("messageId", SqlDbType.NChar, messageId.Length).Value = messageId;
@@ -40,7 +39,7 @@ namespace Rebus.Outbox.SqlServer
 
                 foreach (var outMessage in outgoingMessages)
                 {
-                    command.CommandText += $@"INSERT INTO {tableName} ([MessageId], [MessageInputQueue], [Headers], [Body], [OutsideHandler]) VALUES (@messageId, @messageInputQueue, @headers{i}, @body{i}, 0);";
+                    command.CommandText += $@"INSERT INTO {tableName} ([MessageId], [MessageInputQueue], [Headers], [Body]) VALUES (@messageId, @messageInputQueue, @headers{i}, @body{i});";
 
                     var serializedHeaders = HeaderSerializer.Serialize(outMessage.Headers);
 
@@ -57,9 +56,11 @@ namespace Rebus.Outbox.SqlServer
         public async Task DeleteOutgoingMessages(TransportMessage message)
         {
             var messageId = message.GetMessageId();
-            using (var command = connectionAccessor.Item.DbConnection.CreateCommand())
+            var sqlServerOutboxTransaction = OutboxTransaction.Get();
+
+            using (var command = sqlServerOutboxTransaction.Connection.CreateCommand())
             {
-                command.Transaction = connectionAccessor.Item.DbTransaction;
+                command.Transaction = sqlServerOutboxTransaction.Transaction;
                 command.CommandText = $"DELETE FROM {tableName} WHERE MessageID = @messageId AND MessageInputQueue = @messageInputQueue AND DATALENGTH(Body) <> 0";
 
                 command.Parameters.Add("messageId", SqlDbType.NChar, messageId.Length).Value = messageId;
@@ -71,9 +72,11 @@ namespace Rebus.Outbox.SqlServer
 
         public async Task DeleteIdempotencyCheckMessage(TransportMessage message)
         {
-            using (var command = connectionAccessor.Item.DbConnection.CreateCommand())
+            var sqlServerOutboxTransaction = OutboxTransaction.Get();
+
+            using (var command = sqlServerOutboxTransaction.Connection.CreateCommand())
             {
-                command.Transaction = connectionAccessor.Item.DbTransaction;
+                command.Transaction = sqlServerOutboxTransaction.Transaction;
                 command.CommandText = $"DELETE FROM {tableName} WHERE MessageID = @messageId AND MessageInputQueue = @messageInputQueue AND DATALENGTH(Body) = 0";
 
                 var messageId = message.GetMessageId();
@@ -87,9 +90,11 @@ namespace Rebus.Outbox.SqlServer
 
         public async Task<List<TransportMessage>> GetOutgoingMessages(TransportMessage message)
         {
-            using (var command = connectionAccessor.Item.DbConnection.CreateCommand())
+            var sqlServerOutboxTransaction = OutboxTransaction.Get();
+
+            using (var command = sqlServerOutboxTransaction.Connection.CreateCommand())
             {
-                command.Transaction = connectionAccessor.Item.DbTransaction;
+                command.Transaction = sqlServerOutboxTransaction.Transaction;
                 command.CommandText = @$"SELECT [Headers], [Body] FROM {tableName} WHERE [MessageId] = @messageId AND [MessageInputQueue] = @messageInputQueue";
 
                 var messageId = message.GetMessageId();
@@ -115,84 +120,14 @@ namespace Rebus.Outbox.SqlServer
             }
         }
 
-        public async Task Store(string key, IEnumerable<TransportMessage> outgoingMessages)
-        {
-            using (var command = connectionAccessor.Item.DbConnection.CreateCommand())
-            {
-                command.Transaction = connectionAccessor.Item.DbTransaction;
-
-                command.Parameters.Add("messageId", SqlDbType.NChar, key.Length).Value = key;
-                command.Parameters.Add("messageInputQueue", SqlDbType.NChar, addressLength).Value = address;
-
-                command.CommandText = string.Empty;
-                var i = 0;
-
-                foreach (var outMessage in outgoingMessages)
-                {
-                    command.CommandText += $@"INSERT INTO {tableName} ([MessageId], [MessageInputQueue], [Headers], [Body], [OutsideHandler]) VALUES (@messageId, @messageInputQueue, @headers{i}, @body{i}, 1);";
-
-                    var serializedHeaders = HeaderSerializer.Serialize(outMessage.Headers);
-
-                    command.Parameters.Add($"headers{i}", SqlDbType.VarBinary, MathUtil.GetNextPowerOfTwo(serializedHeaders.Length)).Value = serializedHeaders;
-                    command.Parameters.Add($"body{i}", SqlDbType.VarBinary, MathUtil.GetNextPowerOfTwo(outMessage.Body.Length)).Value = outMessage.Body;
-
-                    ++i;
-                }
-
-                await command.ExecuteNonQueryAsync();
-            }
-        }
-
-        public async Task DeleteOutgoingMessages(string key)
-        {
-            using (var command = connectionAccessor.Item.DbConnection.CreateCommand())
-            {
-                command.Transaction = connectionAccessor.Item.DbTransaction;
-                command.CommandText = $"DELETE FROM {tableName} WHERE MessageID = @messageId AND MessageInputQueue = @messageInputQueue AND DATALENGTH(Body) <> 0";
-
-                command.Parameters.Add("messageId", SqlDbType.NChar, key.Length).Value = key;
-                command.Parameters.Add("messageInputQueue", SqlDbType.NChar, addressLength).Value = address;
-
-                await command.ExecuteNonQueryAsync();
-            }
-        }
-
-        public async Task<List<TransportMessage>> GetUnsentOutgoingMessages(int topMessages)
-        {
-            using (var command = connectionAccessor.Item.DbConnection.CreateCommand())
-            {
-                command.Transaction = connectionAccessor.Item.DbTransaction;
-                command.CommandText = @$"DELETE TOP({ topMessages}) 
-                FROM {tableName}
-                WITH(READPAST, ROWLOCK, READCOMMITTEDLOCK)
-                OUTPUT deleted.Headers, deleted.Body
-                WHERE [MessageInputQueue] = @MessageInputQueue AND [Timestamp] < @timestamp AND [OutsideHandler] = 1";
-
-                command.Parameters.Add("messageInputQueue", SqlDbType.NChar, addressLength).Value = address;
-                command.Parameters.Add("timestamp", SqlDbType.DateTime).Value = DateTime.UtcNow.AddSeconds(-5); // NOTE: We must subtract so we don't send messages that has just been added by a http request
-
-                var transportMessages = new List<TransportMessage>();
-
-                using (var reader = await command.ExecuteReaderAsync())
-                {
-                    while (await reader.ReadAsync())
-                    {
-                        var headers = reader["headers"];
-                        var headersDictionary = HeaderSerializer.Deserialize((byte[])headers);
-                        var body = (byte[])reader["body"];
-
-                        transportMessages.Add(new TransportMessage(headersDictionary, body));
-                    }
-                }
-
-                return transportMessages;
-            }
-        }
-
         public async Task EnsureTableIsCreated()
         {
-            using (var command = connectionAccessor.Item.DbConnection.CreateCommand())
+            var sqlServerOutboxTransaction = OutboxTransaction.Get();
+
+            using (var command = sqlServerOutboxTransaction.Connection.CreateCommand())
             {
+                command.Transaction = sqlServerOutboxTransaction.Transaction;
+
                 command.CommandText = $@"
                         IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = '{tableName.Schema}')
 	                        EXEC('CREATE SCHEMA {tableName.Schema}')
@@ -207,7 +142,6 @@ namespace Rebus.Outbox.SqlServer
 	                            [Headers] [varbinary](max) NOT NULL,
 	                            [Body] [varbinary](max) NOT NULL,
 	                            [Timestamp] [datetime] NOT NULL,
-                                [OutsideHandler] [bit] NOT NULL,
                              CONSTRAINT [PK_{tableName.Schema}_{tableName.Name}] PRIMARY KEY CLUSTERED 
                             (
 	                            [Id] ASC
@@ -231,7 +165,7 @@ namespace Rebus.Outbox.SqlServer
 	                            [Timestamp] ASC
                             )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, SORT_IN_TEMPDB = OFF, DROP_EXISTING = OFF, ONLINE = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
                         ";
-                command.Transaction = connectionAccessor.Item.DbTransaction;
+                
                 await command.ExecuteNonQueryAsync();
             }
         }
