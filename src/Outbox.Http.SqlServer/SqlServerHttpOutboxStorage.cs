@@ -29,7 +29,7 @@ namespace Rebus.Outbox.Http.SqlServer
 
             IEnumerable<TransportMessage> batch;
 
-            const int batchSize = 2000;
+            const int batchSize = 1000;
             var batchCnt = 0;
 
             while ((batch = outgoingMessages.Skip(batchSize * batchCnt++).Take(batchSize)).Any())

@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Data;
+using System.Linq;
 using System.Threading.Tasks;
 using Rebus.Bus;
 using Rebus.Messages;
@@ -26,30 +27,41 @@ namespace Rebus.Outbox.Handler.SqlServer
         {
             var sqlServerOutboxTransaction = OutboxTransaction.Get();
 
-            using (var command = sqlServerOutboxTransaction.Connection.CreateCommand())
+            IEnumerable<TransportMessage> batch;
+
+            const int batchSize = 1000;
+            var batchCnt = 0;
+
+            while ((batch = outgoingMessages.Skip(batchSize * batchCnt++).Take(batchSize)).Any())
             {
-                command.Transaction = sqlServerOutboxTransaction.Transaction;
-
-                var messageId = message.GetMessageId();
-                command.Parameters.Add("messageId", SqlDbType.NChar, messageId.Length).Value = messageId;
-                command.Parameters.Add("messageInputQueue", SqlDbType.NChar, addressLength).Value = address;
-
-                command.CommandText = string.Empty;
-                var i = 0;
-
-                foreach (var outMessage in outgoingMessages)
+                using (var command = sqlServerOutboxTransaction.Connection.CreateCommand())
                 {
-                    command.CommandText += $@"INSERT INTO {tableName} ([MessageId], [MessageInputQueue], [Headers], [Body]) VALUES (@messageId, @messageInputQueue, @headers{i}, @body{i});";
+                    command.Transaction = sqlServerOutboxTransaction.Transaction;
 
-                    var serializedHeaders = HeaderSerializer.Serialize(outMessage.Headers);
+                    var messageId = message.GetMessageId();
+                    command.Parameters.Add("messageId", SqlDbType.NChar, messageId.Length).Value = messageId;
+                    command.Parameters.Add("messageInputQueue", SqlDbType.NChar, addressLength).Value = address;
 
-                    command.Parameters.Add($"headers{i}", SqlDbType.VarBinary, MathUtil.GetNextPowerOfTwo(serializedHeaders.Length)).Value = serializedHeaders;
-                    command.Parameters.Add($"body{i}", SqlDbType.VarBinary, MathUtil.GetNextPowerOfTwo(outMessage.Body.Length)).Value = outMessage.Body;
+                    command.CommandText = string.Empty;
+                    var i = 0;
 
-                    ++i;
+                    foreach (var outMessage in batch)
+                    {
+                        command.CommandText +=
+                            $@"INSERT INTO {tableName} ([MessageId], [MessageInputQueue], [Headers], [Body]) VALUES (@messageId, @messageInputQueue, @headers{i}, @body{i});";
+
+                        var serializedHeaders = HeaderSerializer.Serialize(outMessage.Headers);
+
+                        command.Parameters.Add($"headers{i}", SqlDbType.VarBinary,
+                            MathUtil.GetNextPowerOfTwo(serializedHeaders.Length)).Value = serializedHeaders;
+                        command.Parameters.Add($"body{i}", SqlDbType.VarBinary,
+                            MathUtil.GetNextPowerOfTwo(outMessage.Body.Length)).Value = outMessage.Body;
+
+                        ++i;
+                    }
+
+                    await command.ExecuteNonQueryAsync();
                 }
-
-                await command.ExecuteNonQueryAsync();
             }
         }
 
