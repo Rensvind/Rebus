@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using System.Threading.Tasks;
 using Rebus.Activation;
 using Rebus.Backoff;
@@ -15,7 +16,7 @@ namespace OutboxTest
     {
         static async Task Main(string[] args)
         {
-            var connectionString = "Server=.\\SQL2017;Database=rebus2;User Id=sa;Password=password; Max Pool Size=100;";
+            var connectionString = "connectionString";
 
             using (var activator = new BuiltinHandlerActivator())
             {
@@ -49,7 +50,6 @@ namespace OutboxTest
                 while (Console.ReadLine() != "quit")
                 {
                     await bus.SendLocal(true);
-                    //await Task.WhenAll(Enumerable.Range(0, 100).Select(x => bus.SendLocal(true)));
                 }
             }
         }
